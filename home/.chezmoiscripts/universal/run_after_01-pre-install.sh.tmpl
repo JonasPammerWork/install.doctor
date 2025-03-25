@@ -22,18 +22,18 @@ applyFontsToSystem() {
     FONT_DIR='/Library/Fonts'
     ### ~/Library/Fonts
     if [ -d "$HOME/Library/Fonts" ]; then
-      gum log -sl info "Syncing $HOME/Library/Fonts to $FONT_DIR" && sudo rsync -av "$HOME/Library/Fonts" "$FONT_DIR"
+      gum log -sl info "Syncing $HOME/Library/Fonts to $FONT_DIR" && sudo rsync -artuE --chown=root: --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r --inplace --exclude .git/ "$HOME/Library/Fonts/" "$FONT_DIR" > /dev/null
     fi
     ### ~/.local/share/fonts
     if [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/fonts" ]; then
-      gum log -sl info "Syncing ${XDG_DATA_HOME:-$HOME/.local/share}/fonts to $FONT_DIR" && sudo rsync -av "${XDG_DATA_HOME:-$HOME/.local/share}/fonts" "$FONT_DIR"
+      gum log -sl info "Syncing ${XDG_DATA_HOME:-$HOME/.local/share}/fonts to $FONT_DIR" && sudo rsync -artuE --chown=root: --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r --inplace --exclude .git/ "${XDG_DATA_HOME:-$HOME/.local/share}/fonts/" "$FONT_DIR" > /dev/null
     fi
   else
     ### Linux
     ### Copy fonts
     gum log -sl info 'Copying fonts from ~/.local/share/fonts to /usr/local/share/fonts to make them available globally'
     FONT_DIR='/usr/local/share/fonts'
-    sudo rsync -av "${XDG_DATA_HOME:-$HOME/.local/share}/fonts" "$FONT_DIR"
+    sudo rsync -artuE --chown=root: --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rwX,Fg=rX,Fo=rX --inplace --exclude .git/ "${XDG_DATA_HOME:-$HOME/.local/share}/fonts/" "$FONT_DIR" > /dev/null
 
     ### Configure system font properties
     if [ -d /etc/fonts ]; then
@@ -80,7 +80,7 @@ applyLinuxThemeFiles() {
     ### Copy theme files over to /usr/local/share
     if [ -d "$HOME/.local/src/{{ .theme | lower }}/share" ]; then
       gum log -sl info 'Copying ~/.local/src/{{ .theme | lower }}/share to /usr/local/share'
-      sudo rsync --chown=root:root --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r -artvu --inplace "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/" "/usr/local/share/" > /dev/null
+      sudo rsync --chown=root: --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r -artvu --inplace "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/" "/usr/local/share/" > /dev/null
     else
       gum log -sl warn '~/.local/share/betelgeuse/share is missing'
     fi
@@ -148,9 +148,10 @@ applyRootConfig() {
     ### Copy minimal set of profile configuration files
     gum log -sl info "Copying ~/.bashrc to $ROOT_FOLDER/.bashrc" && sudo cp -f "$HOME/.bashrc" "$ROOT_FOLDER/.bashrc"
     gum log -sl info "Copying ~/.zshrc to $ROOT_FOLDER/.zshrc" && sudo cp -f "$HOME/.zshrc" "$ROOT_FOLDER/.zshrc"
+    gum log -sl info "Copying ~/.profile to $ROOT_FOLDER/.profile" && sudo cp -f "$HOME/.profile" "$ROOT_FOLDER/.profile"
     gum log -sl info "Ensuring ~/.config folder exists" && sudo mkdir -p "$ROOT_FOLDER/.config"
     gum log -sl info "Copying ~/.config/shell to $ROOT_FOLDER/.config/shell" && sudo mkdir -p "$ROOT_FOLDER/.config" && sudo rm -rf "$ROOT_FOLDER/.config/shell" && sudo cp -rf "$HOME/.config/shell" "$ROOT_FOLDER/.config/shell"
-    
+
     ### Copy Autorestic configurations
     gum log -sl info "Copying ${XDG_CONFIG_HOME:-$HOME/.config}/autorestic/autorestic-system.yml file to $ROOT_FOLDER/.autorestic.yml" && sudo cp -f "${XDG_CONFIG_HOME:-$HOME/.config}/autorestic/autorestic-system.yml" "$ROOT_FOLDER/.autorestic.yml"
     gum log -sl info "Applying proper permissions to $ROOT_FOLDER/.autorestic.yml" && sudo chmod 600 "$ROOT_FOLDER/.autorestic.yml"
@@ -169,11 +170,13 @@ applyWallpaper() {
   ksetwallpaper --file /usr/local/share/wallpapers/Betelgeuse/contents/images/3440x1440.jpg
   {{ else -}}
   ### Set macOS wallpaper
-  if command -v m > /dev/null && [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/wallpapers/Betelgeuse-macOS/contents/source.png" ]; then
-    gum log -sl info 'Setting macOS wallpaper with m'
-    m wallpaper "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/wallpapers/Betelgeuse-macOS/contents/source.png"
-  else
-    gum log -sl warn 'Either m or the macOS default wallpaper is missing.'
+  if [ -d /Applications ] && [ -d /System ]; then
+    if command -v m > /dev/null && [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/wallpapers/Betelgeuse-macOS/contents/source.png" ]; then
+      gum log -sl info 'Setting macOS wallpaper with m'
+      m wallpaper "${XDG_DATA_HOME:-$HOME/.local/share}/betelgeuse/share/wallpapers/Betelgeuse-macOS/contents/source.png"
+    else
+      gum log -sl warn 'Either m or the macOS default wallpaper is missing.'
+    fi
   fi
   {{ end -}}
 }
@@ -211,21 +214,20 @@ ensureNetworkConfigs() {
 configureNetworkManagerVPNProfiles() {
   if [ "{{ .host.distro.family }}" = "linux" ]; then
     {{ $ovpnUsername := (env "OVPN_USERNAME") }}
-    {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" "secrets" "OVPN_USERNAME")) }}
-    {{   $ovpnUsername := (includeTemplate "secrets/OVPN_USERNAME" | decrypt | trim) }}
+    {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" (printf "%s%s" "secrets-" .chezmoi.hostname) "OVPN_USERNAME")) }}
+    {{   $ovpnUsername := (includeTemplate (printf "%s%s" (printf "%s%s" "secrets-" .chezmoi.hostname) "/OVPN_USERNAME") | decrypt | trim) }}
     {{ end }}
 
     {{ $ovpnPassword := (env "OVPN_PASSWORD") }}
-    {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" "secrets" "OVPN_PASSWORD")) }}
-    {{   $ovpnPassword := (includeTemplate "secrets/OVPN_PASSWORD" | decrypt | trim) }}
+    {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" (printf "%s%s" "secrets-" .chezmoi.hostname) "OVPN_PASSWORD")) }}
+    {{   $ovpnPassword := (includeTemplate (printf "%s%s" (printf "%s%s" "secrets-" .chezmoi.hostname) "/OVPN_PASSWORD") | decrypt | trim) }}
     {{ end }}
 
     RESTART_NM=false
 
     ### Ensure `NetworkManager` plugins are
-    # NOTE: By default, all the NetworkManager plugins are installed.
     if command -v apt-get > /dev/null; then
-      sudo apt-get install -y network-manager*
+      sudo apt-get install -y network-manager* openvpn
     elif command -v dnf > /dev/null; then
       sudo dnf install -y openvpn NetworkManager*
     elif command -v pacman > /dev/null; then
@@ -239,21 +241,27 @@ configureNetworkManagerVPNProfiles() {
       ### Sets up OpenVPN profiles
       if [ '{{ $ovpnUsername }}' != '' ] && [ '{{ $ovpnPassword }}' != '' ]; then
         find "${XDG_CONFIG_HOME:-$HOME/.config}/vpn" -type f -name "*.ovpn" | while read OVPN_FILE; do
-          ### Adds the OpenVPN profiles by importing the `*.ovpn` files in `${XDG_CONFIG_HOME:-$HOME/.config}/vpn` and then applying the OpenVPN username and password
+          ### Adds the OpenVPN profiles by importing the `*.ovpn` files
+          # TMP_OVPN="$(mktemp)"
+          # cat "$OVPN_FILE" | chezmoi decrypt > "$TMP_OVPN"
+          # cat "$OVPN_FILE" > "$TMP_OVPN"
+          # OVPN_FILE="$TMP_OVPN"
           gum log -sl info "Adding $OVPN_FILE to NetworkManager OpenVPN profiles"
           OVPN_NAME="$(basename "$OVPN_FILE" | sed 's/.ovpn$//')"
           nmcli connection import type openvpn file "$OVPN_FILE"
-          nmcli connection modify "$OVPN_NAME" +vpn.data 'username={{- $ovpnUsername }}'
-          nmcli connection modify "$OVPN_NAME" vpn.secrets 'password={{- $ovpnPassword }}'
+          nmcli connection modify "$OVPN_NAME" +vpn.data "username={{ $ovpnUsername }}"
+          nmcli connection modify "$OVPN_NAME" vpn.secrets "password={{ $ovpnPassword }}"
           nmcli connection modify "$OVPN_NAME" +vpn.data password-flags=0
 
           ### Register the excluded subnets in the routeadd / routedel files
           for EXCLUDED_SUBNET in '{{ join "' '" .host.vpn.excludedSubnets }}'; do
-            ensureNetworkConfigs
+            sudo mkdir -p /etc/network/if-up.d
             nmcli connection modify "$OVPN_NAME" +ipv4.routes "$EXCLUDED_SUBNET" | sudo tee -a /etc/network/if-up.d/routeadd
+            sudo mkdir -p /etc/network/if-post-down.d
             nmcli connection modify "$OVPN_NAME" -ipv4.routes "$EXCLUDED_SUBNET" | sudo tee -a /etc/network/if-post-down.d/routedel
           done
           RESTART_NM=true
+          rm -f "$TMP_OVPN"
         done
       else
         gum log -sl info 'Either the OpenVPN username or password is undefined.'
@@ -263,26 +271,40 @@ configureNetworkManagerVPNProfiles() {
       {{ if (stat (joinPath .host.home ".config" "age" "chezmoi.txt")) }}
       ### Setup WireGuard profiles
       if [ -d /etc/NetworkManager/system-connections ]; then
-        find "${XDG_CONFIG_HOME:-$HOME/.config}/vpn" -type f -name "*.nmconnection" | while read WG_FILE; do
+        find "${XDG_CONFIG_HOME:-$HOME/.config}/vpn" -type f -name "*.conf" | while read WG_FILE; do
           ### Ensure the WireGuard NetworkManager plugin is available
-          if [ ! -d /usr/lib/NetworkManager/nm-wireguard-service ]; then
+          if ! command -v network-manager-wireguard > /dev/null; then
             gum log -sl info 'The nm-wireguard-service is not present'
             gum log -sl info 'Installing the nm-wireguard-service'
+            sudo apt-get install -y network-manager-wireguard
           fi
+
+          TMP_CONF="$(mktemp -d)"
 
           ### Add the WireGuard profiles
           gum log -sl info "Adding $WG_FILE to /etc/NetworkManager/system-connections"
           WG_FILENAME="$(basename "$WG_FILE")"
-          chezmoi decrypt "$WG_FILE" | sudo tee "/etc/NetworkManager/system-connections/$WG_FILENAME"
+          cat "$WG_FILE" | chezmoi decrypt > "$TMP_CONF/$WG_FILENAME"
+          WG_FILE="$TMP_CONF/$WG_FILENAME"
+          gum log -sl info "Importing wireguard configuration"
+          nmcli connection import type wireguard file "$WG_FILE"
 
-          ### Register the excluded subnets in the routeadd / routedel files
+          ### Set permissions and reload NetworkManager
+          gum log -sl info "Applying permissions to file"
+          sudo chmod 600 "/etc/NetworkManager/system-connections/$WG_FILENAME"
+          sudo chown root:root "/etc/NetworkManager/system-connections/$WG_FILENAME"
+          sudo systemctl reload NetworkManager
+
+          ### Extract the connection ID and modify it
+          WG_PROFILE_NAME=$(grep -oP '(?<=^id=).*' "$WG_FILE")
           for EXCLUDED_SUBNET in '{{ join "' '" .host.vpn.excludedSubnets }}'; do
-            ensureNetworkConfigs
-            WG_PROFILE_NAME="$(echo "$WG_FILENAME" | sed 's/.nmconnection$//')"
+            sudo mkdir -p /etc/network/if-up.d
             nmcli connection modify "$WG_PROFILE_NAME" +ipv4.routes "$EXCLUDED_SUBNET" | sudo tee -a /etc/network/if-up.d/routeadd
+            sudo mkdir -p /etc/network/if-post-down.d
             nmcli connection modify "$WG_PROFILE_NAME" -ipv4.routes "$EXCLUDED_SUBNET" | sudo tee -a /etc/network/if-post-down.d/routedel
           done
           RESTART_NM=true
+          rm -f "$WG_FILE"
         done
       else
         gum log -sl warn '/etc/NetworkManager/system-connections is not a directory!'
@@ -290,9 +312,9 @@ configureNetworkManagerVPNProfiles() {
       {{ end -}}
 
       ### Restart NetworkManager if changes were made and environment is not WSL
-      if [ "$RESTART_NM" == 'true' ] && [[ ! "$(test -d proc && grep Microsoft /proc/version > /dev/null)" ]]; then
+      if [ "$RESTART_NM" == 'true' ] && [[ ! "$(grep Microsoft /proc/version 2>/dev/null)" ]]; then
         gum log -sl info 'Restarting NetworkManager since VPN profiles were updated'
-        sudo service NetworkManager restart
+        sudo systemctl restart NetworkManager
       fi
     else
       gum log -sl warn 'nmcli is unavailable'
@@ -342,9 +364,30 @@ configureSSHD() {
       else
         ### Linux
         gum log -sl info 'Enabling the sshd service'
-        sudo systemctl enable sshd
-        gum log -sl info 'Restarting the sshd service'
-        sudo systemctl restart sshd && gum log -sl info 'Successfully ran sudo systemctl restart sshd'
+        if [[ -f /etc/os-release ]]; then
+          . /etc/os-release
+          case "$ID" in
+            debian|ubuntu|raspbian|pop|linuxmint)
+              SERVICE_NAME="ssh"
+              ;;
+            rhel|centos|rocky|almalinux|fedora|arch|opensuse|gentoo|alpine)
+              SERVICE_NAME="sshd"
+              ;;
+            *)
+              SERVCE_NAME="unknown"
+              ;;
+          esac
+        else
+          SERVICE_NAME="unknown"
+        fi
+
+        if [ "$SERVICE_NAME" != 'unknown' ]; then
+          sudo systemctl enable "$SERVICE_NAME" --now
+          gum log -sl info 'Restarting the sshd service'
+          sudo systemctl restart "$SERVICE_NAME" && gum log -sl info 'Successfully ran sudo systemctl restart sshd'
+        else
+          gum log -sl error 'Unknown Linux operating system - cannot determine how to configure SSH'
+        fi
       fi
     else
       gum log -sl warn 'The /etc/ssh folder does not exist'
@@ -405,33 +448,10 @@ dconfSettings() {
 }
 
 # @description
-#     This script decrypts the SSH key files that are housed in the `home/.chezmoitemplates/ssh` section of the repository.
-#     It loops through all the files in `home/.chezmoitemplates/ssh` and stores them to the `~/.ssh` folder
-#     when they are successfully decrypted.
-#
 #     This script generates a pair of default `id_rsa` and `id_rsa.pub` keys if one is not already present
 #     on the system after the Install Doctor provisioning process completes. It also ensures the private
 #     key is only readable and writable the provisioning user.
-decryptSSHKeys() {
-  ### Unpack existing encrypted keys
-  gum log -sl info 'Decrypting SSH keys stored in the home/.chezmoitemplates/ssh folder of the Install Doctor repo / fork.'
-  find "{{ .chezmoi.sourceDir }}/.chezmoitemplates/ssh" -type f | while read SSH_FILE; do
-    ### Decrypt SSH file with Chezmoi
-    gum log -sl info "Decrypting the $(basename "$SSH_FILE") encrypted SSH file"
-    chezmoi decrypt "$SSH_FILE" > "$HOME/.ssh/$(basename "$SSH_FILE")" || EXIT_CODE=$?
-
-    ### Handle failed decryption with warning log message
-    if [ -n "$EXIT_CODE" ]; then
-      gum log -sl warn "Unable to decrypt the file stored in $SSH_FILE"
-    fi
-
-    ### Apply appropriate permission to decrypted ~/.ssh file
-    if [ -f "$HOME/.ssh/$(basename "$SSH_FILE")" ]; then
-      gum log -sl info "Applying appropriate permissions on $HOME/.ssh/$(basename "$SSH_FILE")"
-      chmod 600 "$HOME/.ssh/$(basename "$SSH_FILE")"
-    fi
-  done
-
+ensureSSHKey() {
   ### Ensure id_rsa is present and create one if it does not exist
   if [ ! -f "$HOME/.ssh/id_rsa" ]; then
     logg 'Generating missing default private key / public key (~/.ssh/id_rsa)'
@@ -527,6 +547,12 @@ gnomeExtensionSettings() {
     ### Ensure /tmp/install-gnome-extensions.txt is not present on the system
     if [ -f /tmp/install-gnome-extensions.txt ]; then
       rm -f /tmp/install-gnome-extensions.txt
+    fi
+
+    ### Ensure yq installed
+    if ! command -v yq > /dev/null; then
+      gum log -sl info 'Installing yq'
+      brew install yq
     fi
 
     ### Register temporary file for gnome.yml JSON
@@ -988,9 +1014,18 @@ userLogFolders() {
 }
 
 applyBasePlists() {
-  find "$HOME/Library/Preferences/base" -mindepth 1 -maxdepth 1 -type f | while read BASE_PLIST; do
-    cp -f "$BASE_PLIST" "$HOME/Library/Preferences/$(basename "$BASE_PLIST")"
-  done
+  if [ -d /System ] && [ -d /Applications ]; then
+    find "$HOME/Library/Preferences/base" -mindepth 1 -maxdepth 1 -type f | while read BASE_PLIST; do
+      cp -f "$BASE_PLIST" "$HOME/Library/Preferences/$(basename "$BASE_PLIST")"
+    done
+  fi
+}
+
+# @description Applies appropriate permissions to the `~/.ssh` folder
+sshPermissions() {
+  gum log -sl info "Applying permissions to ~/.ssh folder"
+  chmod 700 "${HOME}/.ssh"
+  find "${HOME}/.ssh" -type f -exec chmod 600 {} \;
 }
 
 if [ -n "$DEBUG" ] || [ -n "$DEBUG_MODE" ]; then
@@ -1004,7 +1039,7 @@ if [ -n "$DEBUG" ] || [ -n "$DEBUG_MODE" ]; then
   configureNetworkManagerVPNProfiles
   configureSSHD
   dconfSettings
-  decryptSSHKeys
+  ensureSSHKey
   emscriptenInstall
   ensureQtStyleOverride
   ensurePipUpdated
@@ -1021,6 +1056,7 @@ if [ -n "$DEBUG" ] || [ -n "$DEBUG_MODE" ]; then
   symlinkPython
   userLogFolders
   applyBasePlists
+  sshPermissions
 else
   addZshEnv &
   applyFontsToSystem &
@@ -1031,7 +1067,7 @@ else
   configureNetworkManagerVPNProfiles &
   configureSSHD &
   dconfSettings &
-  decryptSSHKeys &
+  ensureSSHKey &
   emscriptenInstall &
   ensureQtStyleOverride &
   ensurePipUpdated &
@@ -1048,6 +1084,7 @@ else
   symlinkPython &
   userLogFolders &
   applyBasePlists &
+  sshPermissions &
   wait
 fi
 

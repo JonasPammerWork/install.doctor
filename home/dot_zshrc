@@ -459,9 +459,6 @@ fi
 ### pay-respects
 ! command -v pay-respects > /dev/null || eval "$(pay-respects zsh --alias)"
 
-### pkgx
-! command -v pkgx > /dev/null || source <(pkgx --shellcode)
-
 ### Powerline
 [ ! -f "${XDG_CONFIG_HOME:-$HOME/.config}/shell/p10k.zsh" ] || source "${XDG_CONFIG_HOME:-$HOME/.config}/shell/p10k.zsh"
 
@@ -503,4 +500,9 @@ if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/shell/not-found-hook.sh" ]]; then
     # Call the custom hook when a command is not found
     handle_command_not_found "$1"
   }
+fi
+
+### Warpify support
+if [ "$TERM_PROGRAM" = 'WarpTerminal' ]; then
+  printf '\eP$f{"hook": "SourcedRcFileForWarp", "value": { "shell": "zsh"}}\x9c'
 fi

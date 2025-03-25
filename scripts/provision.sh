@@ -230,7 +230,7 @@ loadHomebrew() {
     elif [ -d "$HOME/.linuxbrew" ]; then
       logg info "Using $HOME/.linuxbrew/bin/brew" && eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
     elif [ -d "/home/linuxbrew/.linuxbrew" ]; then
-      logg info 'Using /home/linuxbrew/.linuxbrew/bin/brew' && eval "(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+      logg info 'Using /home/linuxbrew/.linuxbrew/bin/brew' && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
     else
       logg info 'Could not find Homebrew installation'
     fi
@@ -398,24 +398,16 @@ ensureFullDiskAccess() {
 importCloudFlareCert() {
   if [ -d /Applications ] && [ -d /System ] && [ -z "$HEADLESS_INSTALL" ]; then
     ### Acquire certificate
-    if [ ! -f "$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt" ]; then
-      logg info 'Downloading Cloudflare_CA.crt from https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.crt to determine if it is already in the System.keychain'
-      CRT_TMP="$(mktemp)"
-      curl -sSL https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.crt > "$CRT_TMP"
+    if [ -f "$HOME/.local/etc/ssl/cloudflare/cloudflare.crt" ]; then
+      CRT_TMP="$HOME/.local/etc/ssl/cloudflare/cloudflare.crt"
+      ### Validate / import certificate
+      security verify-cert -c "$CRT_TMP" > /dev/null 2>&1
+      if [ $? != 0 ]; then
+        logg info '**macOS Manual Security Permission** Requesting security authorization for Cloudflare trusted certificate'
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CRT_TMP" && logg info 'Successfully imported cloudflare.crt into System.keychain'
+      fi
     else
-      CRT_TMP="$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt"
-    fi
-
-    ### Validate / import certificate
-    security verify-cert -c "$CRT_TMP" > /dev/null 2>&1
-    if [ $? != 0 ]; then
-      logg info '**macOS Manual Security Permission** Requesting security authorization for Cloudflare trusted certificate'
-      sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CRT_TMP" && logg info 'Successfully imported Cloudflare_CA.crt into System.keychain'
-    fi
-
-    ### Remove temporary file, if necessary
-    if [ ! -f "$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt" ]; then
-      rm -f "$CRT_TMP"
+      logg warn "$HOME/.local/etc/ssl/cloudflare/cloudflare.crt is missing"
     fi
   fi
 }
@@ -453,9 +445,9 @@ ensureWarpDisconnected() {
 setupPasswordlessSudo() {
   sudo -n true || SUDO_EXIT_CODE=$?
   logg info 'Your user will temporarily be granted passwordless sudo for the duration of the script'
-  if [ -n "$SUDO_EXIT_CODE" ] && [ -z "$SUDO_PASSWORD" ] && command -v chezmoi > /dev/null && [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets/SUDO_PASSWORD" ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/age/chezmoi.txt" ]; then
-    logg info "Acquiring SUDO_PASSWORD by using Chezmoi to decrypt ${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets/SUDO_PASSWORD"
-    SUDO_PASSWORD="$(cat "${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets/SUDO_PASSWORD" | chezmoi decrypt)"
+  if [ -n "$SUDO_EXIT_CODE" ] && [ -z "$SUDO_PASSWORD" ] && command -v chezmoi > /dev/null && [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets-$(hostname -s)/SUDO_PASSWORD" ] && [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/age/chezmoi.txt" ]; then
+    logg info "Acquiring SUDO_PASSWORD by using Chezmoi to decrypt ${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets-$(hostname -s)/SUDO_PASSWORD"
+    SUDO_PASSWORD="$(cat "${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/.chezmoitemplates/secrets-$(hostname -s)/SUDO_PASSWORD" | chezmoi decrypt)"
     export SUDO_PASSWORD
   fi
   if [ -n "$SUDO_PASSWORD" ]; then
@@ -701,34 +693,49 @@ runChezmoi() {
   DEBUG_MODIFIER=""
   if [ -n "$DEBUG_MODE" ] || [ -n "$DEBUG" ]; then
     logg info "Either DEBUG_MODE or DEBUG environment variables were set so Chezmoi will be run in debug mode"
-    export DEBUG_MODIFIER="-vvvvv --debug --verbose"
+    export DEBUG_MODIFIER="-vvv --debug --verbose"
   fi
 
   ### Run chezmoi apply
-  if command -v unbuffer > /dev/null; then
-    if command -v caffeinate > /dev/null; then
-      logg info "Running: unbuffer -p caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
-      unbuffer -p caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
-    else
-      logg info "Running: unbuffer -p chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
-      unbuffer -p chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
-    fi
-    logg info "Unbuffering log file $LOG_FILE"
-    UNBUFFER_TMP="$(mktemp)"
-    unbuffer cat "$LOG_FILE" > "$UNBUFFER_TMP"
-    mv -f "$UNBUFFER_TMP" "$LOG_FILE"
+  if [ -d /System ] && [ -d /Applications ]; then
+    # macOS: Check if display information is available
+    system_profiler SPDisplaysDataType > /dev/null 2>&1
   else
-    if command -v caffeinate > /dev/null; then
-      logg info "Running: caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
-      caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+    # Linux: Check if xrandr can list monitors
+    xrandr --listmonitors > /dev/null 2>&1
+  fi
+
+  # Check if the last command failed
+  if [ $? -ne 0 ]; then
+    logg info "Fallback: Running in headless mode"
+    chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER
+  else
+    logg info "Running with a display"
+    if command -v unbuffer > /dev/null; then
+      if command -v caffeinate > /dev/null; then
+        logg info "Running: unbuffer -p caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
+        unbuffer -p caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+      else
+        logg info "Running: unbuffer -p chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
+        unbuffer -p chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+      fi
+      logg info "Unbuffering log file $LOG_FILE"
+      UNBUFFER_TMP="$(mktemp)"
+      unbuffer cat "$LOG_FILE" > "$UNBUFFER_TMP"
+      mv -f "$UNBUFFER_TMP" "$LOG_FILE"
     else
-      logg info "Running: chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
-      chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+      if command -v caffeinate > /dev/null; then
+        logg info "Running: caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
+        caffeinate chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+      else
+        logg info "Running: chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER"
+        chezmoi apply $COMMON_MODIFIERS $DEBUG_MODIFIER $KEEP_GOING_MODIFIER $FORCE_MODIFIER 2>&1 | tee /dev/tty | ts '[%Y-%m-%d %H:%M:%S]' > "$LOG_FILE" || CHEZMOI_EXIT_CODE=$?
+      fi
     fi
   fi
 
   ### Handle exit codes in log
-  if cat "$LOG_FILE" | grep 'chezmoi: exit status 140' > /dev/null; then
+  if [ -f "$LOG_FILE" ] && cat "$LOG_FILE" | grep 'chezmoi: exit status 140' > /dev/null; then
     beforeRebootDarwin
     logg info "Chezmoi signalled that a reboot is necessary to apply a system update"
     logg info "Running softwareupdate with the reboot flag"
@@ -774,10 +781,77 @@ vimPlugins() {
   fi
 }
 
+# @description Creates apple user if user is running this script as root and continues the script execution with the new `apple` user
+#     by creating the `apple` user with a password equal to the `SUDO_PASSWORD` environment variable or "bananas" if no `SUDO_PASSWORD`
+#     variable is present.
+function ensureAppleUser() {
+  # Check if the script is running as root
+  if [ "$(id -u)" -eq 0 ]; then
+    logg info "You are running as root. Proceeding with user creation."
+
+    # Check if SUDO_PASSWORD is set, if not, set it to "bananas" and export
+    if [ -z "$SUDO_PASSWORD" ]; then
+      logg info "SUDO_PASSWORD is not set. Setting it to 'bananas'."
+      export SUDO_PASSWORD="bananas"
+    fi
+
+    # Check if 'apple' user exists
+    if id "apple" &>/dev/null; then
+      logg info "User 'apple' already exists. Skipping creation."
+    else
+      # Create a new user 'apple'
+      logg info "Creating user 'apple'..."
+      if command -v useradd &>/dev/null; then
+        # For Linux distributions
+        useradd -m -s /bin/bash apple
+      elif command -v dscl &>/dev/null; then
+        # For macOS
+        dscl . -create /Users/apple
+        dscl . -create /Users/apple UserShell /bin/bash
+        dscl . -create /Users/apple UniqueID "$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -1 | xargs -I{} echo {} + 1)"
+        dscl . -create /Users/apple PrimaryGroupID 20
+        dscl . -create /Users/apple NFSHomeDirectory /Users/apple
+        mkdir -p /Users/apple
+        chown -R apple:staff /Users/apple
+      else
+        logg info "Unsupported system. Exiting."
+        exit 1
+      fi
+
+      # Set the password for 'apple'
+      logg info "Setting a password for 'apple'..."
+      echo "apple:$SUDO_PASSWORD" | chpasswd 2>/dev/null || \
+      (echo "$SUDO_PASSWORD" | passwd --stdin apple 2>/dev/null || \
+      (echo "$SUDO_PASSWORD" | dscl . -passwd /Users/apple $SUDO_PASSWORD 2>/dev/null))
+
+      # Grant sudo privileges to 'apple'
+      logg info "Granting sudo privileges to 'apple'..."
+      if command -v usermod &>/dev/null; then
+        usermod -aG sudo apple
+      elif command -v dseditgroup &>/dev/null; then
+        dseditgroup -o edit -a apple -t user admin
+      else
+        logg info "Unable to grant sudo privileges. Continuing anyway."
+      fi
+    fi
+
+    # Switch to 'apple' user to continue the script
+    logg warn "Exporting environment variables to /tmp/env_vars.sh"
+    export -p > /tmp/env_vars.sh
+    chown apple /tmp/env_vars.sh
+    logg info "Running source /tmp/env_vars.sh && rm -f /tmp/env_vars.sh && bash <(curl -sSL https://install.doctor/start) with the apple user"
+    su - apple -c "source /tmp/env_vars.sh && rm -f /tmp/env_vars.sh && export HOME='/home/apple' && export USER='apple' && cd /home/apple && bash <(curl -sSL https://install.doctor/start)"
+    exit 0
+  else
+    logg info "You are not running as root. Proceeding with the current user."
+  fi
+}
+
 # @description The `provisionLogic` function is used to define the order of the script. All of the functions it relies on are defined
 #     above.
 provisionLogic() {
-  loadHomebrew
+  logg info "Ensuring script is not run with root" && ensureAppleUser
+  logg info "Attempting to load Homebrew" && loadHomebrew
   logg info "Setting environment variables" && setEnvironmentVariables
   logg info "Handling CI variables" && setCIEnvironmentVariables
   logg info "Ensuring WARP is disconnected" && ensureWarpDisconnected

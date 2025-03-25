@@ -26,8 +26,8 @@ install_via_brew() {
   local COMMAND="$2"
 
   # Ensure the brew key exists and contains valid values
-  if [[ -z "$BREW_KEY" || -z "$COMMAND" ]]; then
-    gum log -sl error "No suitable brew package found for $COMMAND."
+  if [[ -z "$BREW_KEY" || "$BREW_KEY" == "<" || -z "$COMMAND" ]]; then
+    gum log -sl error "No valid Homebrew package found for '$COMMAND'."
     return 1
   fi
 
@@ -41,14 +41,18 @@ install_via_brew() {
       fi
       echo "$PKG" >> "$HOME/.local/var/log/install.doctor/id-not-found-hook-items"
       if ! brew install "$PKG" &>/dev/null; then
-        gum log -sl error "Failed to install $PKG via brew."
+        gum log -sl error "Failed to install '$PKG' via Homebrew."
         return 1
       fi
     done
   else
     # Otherwise, install the single package
+    if [[ -z "$BREW_KEY" || "$BREW_KEY" == "<" ]]; then
+      gum log -sl error "Invalid Homebrew package name for '$COMMAND'."
+      return 1
+    fi
     if ! brew install "$BREW_KEY" &>/dev/null; then
-      gum log -sl error "Failed to install $BREW_KEY via brew."
+      gum log -sl error "Failed to install '$BREW_KEY' via Homebrew."
       return 1
     fi
   fi
@@ -112,11 +116,11 @@ handle_command_not_found() {
     local BREW_PACKAGE_NAME
     BREW_PACKAGE_NAME=$(echo "$BREW_EXPLAIN_OUTPUT" | grep -oE "brew install [^\s]+" | awk '{print $3}')
     if [[ -n "$BREW_PACKAGE_NAME" ]]; then
-      if brew install "$BREW_PACKAGE_NAME" &>/dev/null; then
+      if gum spin --spinner dot --title "Installing $BREW_PACKAGE_NAME with Homebrew.." -- brew install "$BREW_PACKAGE_NAME" &>/dev/null; then
         "$COMMAND" # Run the command after installation
         return 0
       else
-        gum log -sl error "Failed to install $BREW_PACKAGE_NAME via brew."
+        gum log -sl error "Failed to install '$BREW_PACKAGE_NAME' via Homebrew."
         return 1
       fi
     fi
@@ -124,14 +128,13 @@ handle_command_not_found() {
 
   # Check for headless environment (no terminal interaction)
   if [[ -z "$DISPLAY" && -z "$SSH_TTY" ]]; then
-    gum log -sl error "The $COMMAND command was not found and could not be loaded on the fly since there are no matches provided by the software definitions file and the Homebrew command query."
+    gum log -sl error "The '$COMMAND' command was not found and could not be loaded."
     return 1
   fi
 
   # If nothing found, call sgpt to generate install code
   gum log -sl warn "Command not found."
-  gum log -sl info "Querying ChatGPT for possible solution..."
-  SGPT_RESPONSE=$(sgpt "The \`$COMMAND\` command was not found. The system is macOS. Homebrew is already installed. Print the code that would be required to make the command available. Only print the code in the response.")
+  gum spin --spinner dot --title "Querying ChatGPT for possible solution.." -- SGPT_RESPONSE="$(sgpt "The \`$COMMAND\` command was not found. The system is macOS. Homebrew is already installed. Print the code that would be required to make the command available. Only print the code in the response.")"
 
   # Print the markdown response using glow
   echo "$SGPT_RESPONSE" | glow -

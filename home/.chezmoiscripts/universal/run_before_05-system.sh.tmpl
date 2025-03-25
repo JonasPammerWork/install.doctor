@@ -258,6 +258,8 @@ function gVisorPreBuilt() {
   rm -f *.sha512
   chmod a+rx runsc containerd-shim-runsc-v1
   sudo mv runsc containerd-shim-runsc-v1 /usr/local/bin
+  sudo chown root: /usr/local/bin/runsc
+  sudo chown root: /usr/local/bin/containerd-shim-runsc-v1
 }
 
 # @description Helper function for installDocker that installs gVisor using alternate Go method described on the GitHub page
@@ -466,6 +468,19 @@ installDocker() {
       fi
     fi
   fi
+
+  ### Docker rclone Volume Plugin
+  if [ -d /Applications ] && [ -d /System ]; then
+    gum log -sl info "Ensuring /private/var/lib/docker-plugins/rclone/cache exists as a directory" && sudo mkdir -p /private/var/lib/docker-plugins/rclone/cache
+    gum log -sl info "Ensuring /private/var/lib/docker-plugins/rclone/config is removed" && sudo rm -rf /private/var/lib/docker-plugins/rclone/config
+    gum log -sl info "Symlinking user rclone config to /private/var/lib/docker-plugins/rclone/config" && sudo ln -s "${XDG_CONFIG_HOME:-$HOME/.config}/rclone" /private/var/lib/docker-plugins/rclone/config
+    gum log -sl info "Installing rclone/docker-volume plugin" && docker plugin install rclone/docker-volume-rclone:$(uname -m) args="-v" --alias rclone --grant-all-permissions config="/private/var/lib/docker-plugins/rclone/config" cache="/private/var/lib/docker-plugins/rclone/cache"
+  else
+    gum log -sl info "Ensuring /var/lib/docker-plugins/rclone/cache exists as a directory" && sudo mkdir -p /var/lib/docker-plugins/rclone/cache
+    gum log -sl info "Ensuring /var/lib/docker-plugins/rclone/config is removed" && sudo rm -rf /var/lib/docker-plugins/rclone/config
+    gum log -sl info "Symlinking user rclone config to /var/lib/docker-plugins/rclone/config" && sudo ln -s "${XDG_CONFIG_HOME:-$HOME/.config}/rclone" /var/lib/docker-plugins/rclone/config
+    gum log -sl info "Installing docker-volume-rclone plugin" && docker plugin install rclone/docker-volume-rclone:$(uname -m) args="-v" --alias rclone --grant-all-permissions
+  fi
 }
 
 # @description
@@ -485,9 +500,9 @@ installDocker() {
 #     * [JumpCloud device management requirements](https://support.jumpcloud.com/support/s/article/jumpcloud-agent-compatibility-system-requirements-and-impacts1)
 installJumpCloud() {
   if [ "{{ .host.distro.family }}" = "linux" ]; then
-    if [ "{{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" "secrets" "JUMPCLOUD_CONNECT_KEY")) }}{{- includeTemplate "secrets/JUMPCLOUD_CONNECT_KEY" | decrypt | trim -}}{{ else }}{{- env "JUMPCLOUD_CONNECT_KEY" -}}{{ end }}" != "" ]; then
+    if [ "{{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" (printf "%s%s" "secrets-" .chezmoi.hostname) "JUMPCLOUD_CONNECT_KEY")) }}{{- includeTemplate (printf "%s%s" (printf "%s%s" "secrets-" .chezmoi.hostname) "/JUMPCLOUD_CONNECT_KEY") | decrypt | trim -}}{{ else }}{{- env "JUMPCLOUD_CONNECT_KEY" -}}{{ end }}" != "" ]; then
       gum log -sl info 'Enrolling device with JumpCloud by running the kickstart script'
-      curl --tlsv1.2 --silent --show-error --header 'x-connect-key: {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" "secrets" "JUMPCLOUD_CONNECT_KEY")) }}{{- includeTemplate "secrets/JUMPCLOUD_CONNECT_KEY" | decrypt | trim -}}{{ else }}{{- env "JUMPCLOUD_CONNECT_KEY" -}}{{ end }}' https://kickstart.jumpcloud.com/Kickstart | sudo bash
+      curl --tlsv1.2 --silent --show-error --header 'x-connect-key: {{ if (stat (joinPath .chezmoi.sourceDir ".chezmoitemplates" (printf "%s%s" "secrets-" .chezmoi.hostname) "JUMPCLOUD_CONNECT_KEY")) }}{{- includeTemplate (printf "%s%s" (printf "%s%s" "secrets-" .chezmoi.hostname) "/JUMPCLOUD_CONNECT_KEY") | decrypt | trim -}}{{ else }}{{- env "JUMPCLOUD_CONNECT_KEY" -}}{{ end }}' https://kickstart.jumpcloud.com/Kickstart | sudo bash
     fi
   fi
 }
@@ -606,13 +621,15 @@ setHostname() {
 #     ### Error:-99 File:/AppleInternal/Library/BuildRoots/0032d1ee-80fd-11ee-8227-6aecfccc70fe/Library/Caches/com.apple.xbs/Sources/Admin/InternetServices.m Line:379
 #     ```
 setNtpServer() {
-  if command -v m > /dev/null; then
-    ### macOS
-    gum log -sl info 'Turning off setusingnetworktime for 2 seconds' && sudo systemsetup -setusingnetworktime off 2>/dev/null 1>&2
-    sleep 2
-    gum log -sl info 'Re-enabling setusingnetworktime' && sudo systemsetup -setusingnetworktime on 2>/dev/null 1>&2
-  else
-    gum log -sl warn 'Skipped setting the NTP server'
+  if [ -d /Applications ] && [ -d /System ]; then
+    if command -v m > /dev/null; then
+      ### macOS
+      gum log -sl info 'Turning off setusingnetworktime for 2 seconds' && sudo systemsetup -setusingnetworktime off 2>/dev/null 1>&2
+      sleep 2
+      gum log -sl info 'Re-enabling setusingnetworktime' && sudo systemsetup -setusingnetworktime on 2>/dev/null 1>&2
+    else
+      gum log -sl warn 'Skipped setting the NTP server'
+    fi
   fi
 }
 
@@ -747,6 +764,9 @@ rustUpInit() {
   if command -v rustup-init > /dev/null && ! command -v rustc > /dev/null; then
     gum log -sl info 'Running rustup-init -y' && rustup-init -y
   fi
+  if command -v rustup > /dev/null; then
+    gum log -sl info 'Running rustup default stable' && rustup default stable
+  fi
 }
 
 zapInstall() {
@@ -808,12 +828,25 @@ installXcode() {
   fi
 }
 
+rustUpFix() {
+  if command -v rustup > /dev/null; then
+    logg info 'Running rustup default stable because unsure which Rust library are used on some systems'
+    rustup default stable
+  fi
+}
+
 setupLinuxHomebrewFonts() {
   if [ ! -d /Applications ] && [ ! -d /System ]; then
     gum log -sl info 'Tapping homebrew/linux-fonts' && brew tap homebrew/linux-fonts
-    gum log -sl info 'Symlinking linuxbrew/share/fonts to /usr/local/share' && sudo ln -s /home/linuxbrew/.linuxbrew/share/fonts -t /usr/local/share
+    # if [ ! -L "/usr/local/share/fonts" ]; then
+    #   gum log -sl info 'Symlinking linuxbrew/share/fonts to /usr/local/share'
+    #   sudo ln -s /home/linuxbrew/.linuxbrew/share/fonts -t /usr/local/share
+    # else
+    #   gum log -sl info '/home/linuxbrew/.linuxbrew/share/fonts already symlinked to /usr/local/share'
+    # fi
+
     if command -v fc-cache > /dev/null; then
-      gum log -sl info 'Running sudo fc-cache -fv' && sudo fc-cache -fv
+      gum log -sl info 'Running sudo fc-cache -fv' && sudo fc-cache -fv > /dev/null
     else
       gum log -sl warn 'fc-cache binary not available for setting up Linux Homebrew fonts'
     fi
@@ -847,7 +880,7 @@ if [ -n "$DEBUG" ] || [ -n "$DEBUG_MODE" ]; then
   zapInstall
   installShellGPT
   setupLinuxHomebrewFonts
-  miscMacOs
+  rustUpFix
 else
   installBrewPackages
   installXcode &
@@ -873,7 +906,7 @@ else
   showNotificationCenter &
   zapInstall &
   setupLinuxHomebrewFonts &
-  miscMacOs &
+  rustUpFix &
   wait
 fi
 

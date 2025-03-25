@@ -86,6 +86,16 @@ ensureFullDiskAccess() {
   fi
 }
 
+# @description Install the mobileconfig files from `~/.config/macos/mobileconfig`
+importSettingsMobileConfig() {
+  if [ -d /Applications ] && [ -d /System ]; then
+    for FILE in "${XDG_DATA_HOME:-$HOME/.local/share}/chezmoi/home/dot_config/macos/mobileconfig/"*.mobileconfig; do
+      gum log -sl info "Installing $FILE"
+      sudo profiles install -type configuration -path "$FILE"
+    done
+  fi
+}
+
 # @description Applies changes that require input from the user such as using Touch ID on macOS when
 #     importing certificates into the system keychain.
 #
@@ -93,38 +103,44 @@ ensureFullDiskAccess() {
 importCloudFlareCert() {
   if [ -d /Applications ] && [ -d /System ] && [ -z "$HEADLESS_INSTALL" ]; then
     ### Acquire certificate
-    if [ ! -f "$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt" ]; then
-      gum log -sl info 'Downloading Cloudflare_CA.crt from https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.crt to determine if it is already in the System.keychain'
-      CRT_TMP="$(mktemp)"
-      curl -sSL https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.crt > "$CRT_TMP"
+    if [ -f "$HOME/.local/etc/ssl/cloudflare/cloudflare.crt" ]; then
+      CRT_TMP="$HOME/.local/etc/ssl/cloudflare/cloudflare.crt"
+      ### Validate / import certificate
+      security verify-cert -c "$CRT_TMP" > /dev/null 2>&1
+      if [ $? != 0 ]; then
+        gum log -sl info '**macOS Manual Security Permission** Requesting security authorization for Cloudflare trusted certificate'
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CRT_TMP" && gum log -sl info 'Successfully imported cloudflare.crt into System.keychain'
+      fi
     else
-      CRT_TMP="$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt"
+      gum log -sl warn "$HOME/.local/etc/ssl/cloudflare/cloudflare.crt is missing"
     fi
+  fi
+}
 
-    ### Validate / import certificate
-    security verify-cert -c "$CRT_TMP" > /dev/null 2>&1
-    if [ $? != 0 ]; then
-      gum log -sl info '**macOS Manual Security Permission** Requesting security authorization for Cloudflare trusted certificate'
-      sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "$CRT_TMP" && gum log -sl info 'Successfully imported Cloudflare_CA.crt into System.keychain'
-    fi
-
-    ### Remove temporary file, if necessary
-    if [ ! -f "$HOME/.local/etc/ssl/cloudflare/Cloudflare_CA.crt" ]; then
-      rm -f "$CRT_TMP"
-    fi
+# @description This symlinks the `~/.local/share/chezmoi/home/.chezmoitemplates/secrets`
+#     to `~/.local/share/chezmoi/home/.chezmoitemplates/secrets-${HOSTNAME}`, if appropriate
+symlinkMissingSecrets() {
+  HOSTID="{{ .chezmoi.hostname }}"
+  SOURCE="{{ .chezmoi.sourceDir }}/.chezmoitemplates/secrets"
+  TARGET="{{ .chezmoi.sourceDir }}/.chezmoitemplates/secrets-{{ .chezmoi.hostname }}"
+  if [ -d "$SOURCE" ] && [ ! -d "$TARGET" ]; then
+    ln -s "$SOURCE" "$TARGET"
   fi
 }
 
 addTemporaryIncludes
 . /tmp/tmp-logg
 . /tmp/tmp-profile
+importSettingsMobileConfig
 ensureFullDiskAccess
 if [ -n "$DEBUG" ] || [ -n "$DEBUG_MODE" ]; then
   gum log -sl info 'The DEBUG or DEBUG_MODE environment variable is set so the prepare tasks will be run synchronously'
   importCloudFlareCert
   disconnectWarp
+  symlinkMissingSecrets
 else
   importCloudFlareCert &
   disconnectWarp &
+  symlinkMissingSecrets &
   wait
 fi

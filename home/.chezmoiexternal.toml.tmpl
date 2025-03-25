@@ -198,6 +198,15 @@
     {{ $gitArgs }}
 
 ######################################
+### Home #############################
+######################################
+
+### Local Sites (localwp.com)
+["Local Sites"]
+    type = "git-repo"
+    url = "git@github.com:megabyte-labs/local-sites.git"
+
+######################################
 ### Fonts ############################
 ######################################
 
@@ -290,14 +299,6 @@
 ######################################
 ### Security Certificates ############
 ######################################
-
-### CloudFlare
-[".local/etc/ssl/cloudflare/Cloudflare_CA.crt"]
-    type = "file"
-    url = "https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.crt"
-[".local/etc/ssl/cloudflare/Cloudflare_CA.pem"]
-    type = "file"
-    url = "https://developers.cloudflare.com/cloudflare-one/static/documentation/connections/Cloudflare_CA.pem"
 
 ### cURL / Google Cloud SDK
 [".local/etc/ssl/curl/cacert.pem"]

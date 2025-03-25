@@ -162,9 +162,6 @@ if [ "$BASH_SUPPORT" = 'true' ] && [ -n "$BASH" ]; then
   ### pay-respects
   ! command -v pay-respects > /dev/null || eval "$(pay-respects bash --alias)"
 
-  ### pkgx
-  ! command -v pkgx > /dev/null || eval "$(pkgx --shellcode)"
-
   ### RTX
   ! command -v rtx > /dev/null || eval "$(rtx activate bash)"
 
@@ -207,4 +204,9 @@ if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/shell/not-found-hook.sh" ]]; then
     # Call the custom hook when a command is not found
     handle_command_not_found "$1"
   }
+fi
+
+### Warpify support
+if [ "$TERM_PROGRAM" = 'WarpTerminal' ]; then
+  printf '\eP$f{"hook": "SourcedRcFileForWarp", "value": { "shell": "bash"}}\x9c'
 fi
