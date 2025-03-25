@@ -123,3 +123,23 @@ softwarePackages:
     firefox: print-edit-we
   firefox-image-search:
     firefox: image-search-options
+  zsh-quickstart-kit:
+    install:
+      script:
+        - bash scripts/zsh-quickstart-kit.sh
+    apt:
+      - zsh
+      - fzf
+      - stow
+    brew:
+      - zsh
+      - fzf
+      - stow
+    dnf:
+      - zsh
+      - fzf
+      - stow
+    pacman:
+      - zsh
+      - fzf
+      - stow
