@@ -85,3 +85,41 @@ softwarePackages:
     pipx: mycli
   httpie:
     pipx: httpie
+  firefox-1password:
+    firefox: 1password-x-password-manager
+  firefox-wappalyzer:
+    firefox: wappalyzer
+  firefox-tabliss:
+    firefox: tabliss
+  firefox-ublock:
+    firefox: ublock0
+  firefox-wayback:
+    firefox: wayback-machine
+  firefox-webdev:
+    firefox: web-developer
+  firefox-keepa:
+    firefox: keepa
+  firefox-refined-github:
+    firefox: refined-github
+  firefox-darkreader:
+    firefox: darkreader
+  firefox-combat-report:
+    firefox: combat-report
+  firefox-disable-javascript:
+    firefox: disable-javascript
+  firefox-colorzilla:
+    firefox: colorzilla
+  firefox-react-devtools:
+    firefox: react-developer-tools
+  firefox-redux-devtools:
+    firefox: reduxdevtools
+  firefox-tab-image-saver:
+    firefox: tab-image-saver
+  firefox-minimal-twitter:
+    firefox: minimal-twitter
+  firefox-flagfox:
+    firefox: flagfox
+  firefox-print-edit:
+    firefox: print-edit-we
+  firefox-image-search:
+    firefox: image-search-options
