@@ -1,0 +1,87 @@
+---
+softwarePackages:
+  spectacle:
+    apt: spectacle
+    dnf: spectacle
+    brew: spectacle
+  yakuake:
+    apt: yakuake
+    dnf: yakuake
+  peek:
+    apt: peek
+    dnf: peek
+    brew: peek
+  curl:
+    apt: curl
+    dnf: curl
+    brew: curl
+  wget:
+    apt: wget
+    dnf: wget
+    brew: wget
+  sed:
+    apt: sed
+    dnf: sed
+    brew: gnu-sed
+  recode:
+    apt: recode
+    dnf: recode
+    brew: recode
+  progress:
+    apt: progress
+    dnf: progress
+    brew: progress
+  rpl:
+    apt: rpl
+    dnf: rpl
+    brew: rpl
+  nano:
+    apt: nano
+    dnf: nano
+    brew: nano
+  mlocate:
+    apt: mlocate
+    dnf: mlocate
+    brew: mlocate
+  ncdu:
+    apt: ncdu
+    dnf: ncdu
+    brew: ncdu
+  atop:
+    apt: atop
+    dnf: atop
+    brew: atop
+  iotop-c:
+    apt: iotop
+    dnf: iotop
+    brew: iotop
+  net-tools:
+    apt: net-tools
+    dnf: net-tools
+    brew: net-tools
+  bat:
+    apt: bat
+    dnf: bat
+    brew: bat
+  fd-find:
+    apt: fd-find
+    dnf: fd-find
+    brew: fd
+  speedtest-cli:
+    apt: speedtest-cli
+    dnf: speedtest-cli
+    brew: speedtest-cli
+  duf:
+    apt: duf
+    dnf: duf
+    brew: duf
+  fzf:
+    apt: fzf
+    dnf: fzf
+    brew: fzf
+  thefuck:
+    pipx: thefuck
+  mycli:
+    pipx: mycli
+  httpie:
+    pipx: httpie
