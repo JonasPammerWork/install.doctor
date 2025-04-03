@@ -81,13 +81,13 @@ bash <(curl -sSL https://install.doctor/start)
 If you fork this repository and would like to use your fork as the source, you can still use the command shown above by setting the `START_REPO` environment variable. If it is located on GitHub, you can do this by running:
 
 ```
-START_REPO=my-gh-user/my-fork-name bash <(curl -sSL https://install.doctor/start)
+START_REPO=JonasPammerWork/install.doctor bash <(curl -sSL https://install.doctor/start)
 ```
 
 Alternatively, if you want to host your project on GitLab or another git provider, then just specify the git remote's URL:
 
 ```
-START_REPO=git@gitlab.com:megabyte-labs/install.doctor.git bash <(curl -sSL https://install.doctor/start)
+START_REPO=git@gitlab.com:JonasPammerWork/install.doctor.git bash <(curl -sSL https://install.doctor/start)
 ```
 
 ### Quick Start Notes
