@@ -1,0 +1,62 @@
+#!/bin/bash
+
+{{ include "partials" "logg" }}
+
+logg "start" "Installing zsh-quickstart-kit and Nerd Fonts..."
+
+# Install Nerd Fonts
+mkdir -p ~/.local/share/fonts
+cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/Hack.zip
+unzip -o Hack.zip
+rm Hack.zip
+fc-cache -f -v
+
+# Install Zgenom
+cd $HOME
+if [ ! -d "zgenom" ]; then
+  git clone https://github.com/jandamm/zgenom.git
+else
+  logg "info" "zgenom already installed, skipping..."
+fi
+
+# Install the starter kit
+cd $HOME
+if [ ! -d "zsh-quickstart-kit" ]; then
+  git clone https://github.com/unixorn/zsh-quickstart-kit.git
+else
+  logg "info" "zsh-quickstart-kit already installed, skipping..."
+fi
+
+# Configure zsh using stow
+cd $HOME/zsh-quickstart-kit
+if command -v stow >/dev/null 2>&1; then
+  stow --target=$HOME zsh
+else
+  logg "warn" "Stow is not available, falling back to manual symlinking"
+  ln -sf $HOME/zsh-quickstart-kit/zsh/.zshrc ~/.zshrc
+  ln -sf $HOME/zsh-quickstart-kit/zsh/.zsh-functions ~/.zsh-functions
+  ln -sf $HOME/zsh-quickstart-kit/zsh/.zgen-setup ~/.zgen-setup
+  ln -sf $HOME/zsh-quickstart-kit/zsh/.zsh_aliases ~/.zsh_aliases
+fi
+
+# Set zsh as default shell
+if grep -q "^$USER:" /etc/passwd; then
+  # Regular user - use chsh
+  chsh -s $(which zsh)
+  logg "success" "Changed default shell to zsh"
+else
+  # AD user - update shell in /etc/passwd
+  if command -v sudo >/dev/null 2>&1; then
+    # Remove any existing entry for this user
+    sudo sed -i "/^$USER:/d" /etc/passwd
+    # Add new entry with zsh shell
+    sudo sh -c "getent passwd $USER | sed 's:/bin/bash:/bin/zsh:' >> /etc/passwd"
+    logg "success" "Updated AD user entry in /etc/passwd with zsh shell"
+  else
+    # Fallback to .bashrc/.profile method if no sudo
+    echo 'exec zsh -l' >> ~/.bashrc
+    echo 'exec zsh -l' >> ~/.profile
+    logg "success" "Configured zsh as default shell for AD user (fallback method)"
+  fi
+fi
+
